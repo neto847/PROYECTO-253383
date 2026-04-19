@@ -1,14 +1,38 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import stats 
 from scipy.stats import norm #esto pera el normal
 from scipy.stats import binom # este para el binomial
 from scipy.stats import poisson #esto actualiza al blque de poisson
-# Configuración inicial
-st.title("Laboratorio de Probabilidad - UP Chiapas")
+from scipy import stats #esto para las puebras de HIPOTESIS
+import google.generativeai as genai #para la apy key de importacion de google
 
+# Configuración de la IA
+def configurar_ia(api_key):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    return model
+
+st.title("ERNESTO Laboratorio de Probabilidad - UP Chiapas")
+# Esto va en el sidebar, arriba del selectbox de opciones
+with st.sidebar:
+    st.title(" Configuración de IA")
+    user_api_key = st.text_input("Ingresa tu Google API Key", type="password")
 # Menú lateral para navegar entre bloques
-opcion = st.sidebar.selectbox("Selecciona la Distribución", ["Inicio", "Normal", "Binomial", "Poisson"])
+opcion = st.sidebar.selectbox("Selecciona  la etapa", ["Inicio", "Normal", "Binomial", "Poisson", "Hipotesis","Asistente IA"])
+if opcion == "Inicio":
+    st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3ENXQR-FJ6rtFMXHNKbAXH2rQMRuA12ta9Q&s", width=200)
+    st.title("Sistema de Análisis Estadístico")
+    st.markdown("""
+    Bienvenido al proyecto final de **Probabilidad y Estadística**. 
+    Esta aplicación interactiva permite:
+    * **Visualizar** distribuciones de probabilidad (Normal, Binomial, Poisson).
+    * **Ejecutar** pruebas de hipótesis con veredictos en tiempo real.
+    * **Consultar** a una Inteligencia Artificial para interpretar resultados.
+    
+    *Desarrollado por: Ernesto Diaz*
+    """)
 
 if opcion == "Normal":
     st.header("Distribución Normal")
@@ -46,7 +70,6 @@ if opcion == "Normal":
 
 
     # este bloque es de lo binomial
-
 elif opcion == "Binomial":
     st.header("Distribución Binomial")
     st.write("Se usa para experimentos con solo dos resultados posibles (éxito/fracaso).")
@@ -112,3 +135,119 @@ elif opcion == "Poisson":
     
     prob_k = poisson.pmf(k, mu_poisson)
     st.info(f"La probabilidad de observar exactamente {k} eventos es: **{prob_k:.4f}**")
+
+
+elif opcion == "Hipotesis":
+    st.header(" Pruebas de Hipótesis para la Media")
+    st.write("Calcula si hay evidencia suficiente para rechazar una afirmación sobre el promedio.")
+
+    # --- 1. ENTRADA DE DATOS DEL PROBLEMA ---
+    with st.expander(" Configuración del Experimento", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            mu_h0 = st.number_input("Media a probar (H0)", value=50.0)
+            x_barra = st.number_input("Media observada (Muestra)", value=52.0)
+        with col2:
+            n_muestra = st.number_input("Tamaño de muestra (n)", min_value=2, value=30)
+            sigma_s = st.number_input("Desviación estándar (s o σ)", value=5.0)
+        
+        alpha = st.select_slider("Nivel de significancia (α)", 
+                                 options=[0.01, 0.05, 0.10], value=0.05)
+
+    # --- 2. LÓGICA DE DECISIÓN (Z o T) ---
+    # Calculamos el Error Estándar
+    error_estandar = sigma_s / np.sqrt(n_muestra)
+    
+    # Calculamos el estadístico observado (Z o T se calculan igual)
+    estadistico = (x_barra - mu_h0) / error_estandar
+
+    if n_muestra > 30:
+        tipo_prueba = "Z"
+        # Cálculo de P-valor para dos colas (bilateral)
+        p_valor = 2 * (1 - stats.norm.cdf(abs(estadistico)))
+    else:
+        tipo_prueba = "T"
+        # Grados de libertad para la T de Student
+        gl = n_muestra - 1
+        p_valor = 2 * (1 - stats.t.cdf(abs(estadistico), df=gl))
+
+    # --- 3. EL VEREDICTO ---
+    st.subheader(f"Resultados de la prueba {tipo_prueba}")
+    
+    col_res1, col_res2 = st.columns(2)
+    col_res1.metric("Estadístico observado", f"{estadistico:.4f}")
+    col_res2.metric("P-Valor", f"{p_valor:.4f}")
+
+    if p_valor < alpha:
+        st.error(f" Como {p_valor:.4f} < {alpha}, **Rechazamos H0**.")
+        st.write("Hay evidencia suficiente para decir que la media es diferente.")
+    else:
+        st.warning(f" Como {p_valor:.4f} >= {alpha}, **No rechazamos H0**.")
+        st.write("No hay evidencia suficiente para cambiar la afirmación inicial.")
+        # --- 4. GRÁFICA DE LA PRUEBA ---
+    st.subheader(" Visualización de la Región de Rechazo")
+    
+    # Creamos datos para la curva normal estándar (Z)
+    x_plot = np.linspace(-4, 4, 1000)
+    y_plot = stats.norm.pdf(x_plot, 0, 1)
+
+    fig2, ax2 = plt.subplots()
+    ax2.plot(x_plot, y_plot, color='black', label='Distribución Normal Estándar')
+
+    # Encontrar el valor crítico para la gráfica (bilateral)
+    z_critico = stats.norm.ppf(1 - alpha/2)
+
+    # Sombrear zonas de rechazo
+    x_rechazo_der = np.linspace(z_critico, 4, 100)
+    ax2.fill_between(x_rechazo_der, stats.norm.pdf(x_rechazo_der), color='red', alpha=0.5, label='Zona de Rechazo')
+    
+    x_rechazo_izq = np.linspace(-4, -z_critico, 100)
+    ax2.fill_between(x_rechazo_izq, stats.norm.pdf(x_rechazo_izq), color='red', alpha=0.5)
+
+    # Dibujar línea del estadístico observado
+    ax2.axvline(estadistico, color='blue', linestyle='--', linewidth=2, label=f'Tu Estadístico: {estadistico:.2f}')
+    
+    ax2.legend()
+    ax2.set_title("Prueba Bilateral (Dos Colas)")
+    st.pyplot(fig2)
+
+    # --- 5. INTERVALOS DE CONFIANZA (Mencionado en tu PDF del 14 de abril) ---
+    st.divider()
+    st.subheader(" Intervalo de Confianza")
+    margen_error = z_critico * error_estandar
+    li = x_barra - margen_error
+    ls = x_barra + margen_error
+    
+    st.write(f"Con un **{100*(1-alpha):.0f}%** de confianza, la verdadera media está entre:")
+    st.info(f" **({li:.4f}, {ls:.4f})**")
+elif opcion == "Asistente IA":
+    st.header("Asistente Estadístico Inteligente")
+    
+    if not user_api_key:
+        st.warning("Por favor, ingresa tu API Key en la barra lateral.")
+    else:
+        # 1. Configuramos el modelo fuera del botón para que esté listo
+        try:
+            genai.configure(api_key=user_api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # 2. Área de texto para la pregunta
+            pregunta = st.text_area("Escribe tu duda estadística aquí:", 
+                                     placeholder="Ej. ¿Qué es el p-valor?")
+            
+            # 3. Al presionar el botón, ejecutamos la consulta
+            if st.button("Consultar a Gemini"):
+                if pregunta:
+                    with st.spinner("Consultando al experto..."):
+                        # El prompt con contexto para que sea un buen profesor
+                        prompt_completo = f"Eres un profesor de estadística de la UP Chiapas. Responde de forma breve y clara: {pregunta}"
+                        response = model.generate_content(prompt_completo)
+                        
+                        st.markdown("---")
+                        st.markdown("### 🎓 Respuesta del Profesor:")
+                        st.write(response.text)
+                else:
+                    st.error("Escribe una pregunta antes de consultar.")
+        
+        except Exception as e:
+            st.error(f"Hubo un error con la API Key: {e}")
