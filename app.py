@@ -7,7 +7,7 @@ from scipy.stats import binom # este para el binomial
 from scipy.stats import poisson #esto actualiza al blque de poisson
 from scipy import stats #esto para las puebras de HIPOTESIS
 import google.generativeai as genai #para la apy key de importacion de google
-
+import pandas as pd
 # Configuración de la IA
 def configurar_ia(api_key):
     genai.configure(api_key=api_key)
@@ -20,7 +20,7 @@ with st.sidebar:
     st.title(" Configuración de IA")
     user_api_key = st.text_input("Ingresa tu Google API Key", type="password")
 # Menú lateral para navegar entre bloques
-opcion = st.sidebar.selectbox("Selecciona  la etapa", ["Inicio", "Normal", "Binomial", "Poisson", "Hipotesis","Asistente IA"])
+opcion = st.sidebar.selectbox("Selecciona  la etapa", ["Inicio", "Normal", "Binomial", "Poisson", "Hipotesis","Asistente IA","Cargar Datos"])
 if opcion == "Inicio":
     st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3ENXQR-FJ6rtFMXHNKbAXH2rQMRuA12ta9Q&s", width=200)
     st.title("Sistema de Análisis Estadístico")
@@ -226,28 +226,69 @@ elif opcion == "Asistente IA":
     if not user_api_key:
         st.warning("Por favor, ingresa tu API Key en la barra lateral.")
     else:
-        # 1. Configuramos el modelo fuera del botón para que esté listo
         try:
+            # Configurar el modelo
             genai.configure(api_key=user_api_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # 2. Área de texto para la pregunta
-            pregunta = st.text_area("Escribe tu duda estadística aquí:", 
-                                     placeholder="Ej. ¿Qué es el p-valor?")
+            pregunta = st.text_area("Escribe tu duda para el profesor:", 
+                                     placeholder="Ej. ¿Cómo interpreto un p-valor de 0.03?")
             
-            # 3. Al presionar el botón, ejecutamos la consulta
             if st.button("Consultar a Gemini"):
                 if pregunta:
-                    with st.spinner("Consultando al experto..."):
-                        # El prompt con contexto para que sea un buen profesor
-                        prompt_completo = f"Eres un profesor de estadística de la UP Chiapas. Responde de forma breve y clara: {pregunta}"
-                        response = model.generate_content(prompt_completo)
+                    with st.spinner("El profesor está analizando tu duda..."):
+                        # Enviamos la consulta
+                        contexto = "Eres un profesor de estadística experto. Responde de forma clara, educativa y en español."
+                        prompt_final = f"{contexto}\n\nPregunta del alumno: {pregunta}"
                         
-                        st.markdown("---")
-                        st.markdown("### 🎓 Respuesta del Profesor:")
-                        st.write(response.text)
+                        response = model.generate_content(prompt_final)
+                        
+                        # Guardamos y mostramos el resultado inmediatamente
+                        if response.text:
+                            st.markdown("### 🎓 Respuesta del Profesor:")
+                            st.info(response.text)
+                        else:
+                            st.error("Gemini no pudo generar una respuesta. Revisa tu conexión.")
                 else:
-                    st.error("Escribe una pregunta antes de consultar.")
-        
+                    st.error("Debes escribir una pregunta primero.")
+                    
         except Exception as e:
-            st.error(f"Hubo un error con la API Key: {e}")
+            if "overloaded" in str(e).lower():
+                st.warning("Los servidores de Google están saturados. Por favor, espera un momento y presiona el botón de nuevo.")
+            else:
+                st.error(f"Error: {e}")
+elif opcion == "Cargar Datos":
+    st.header("Análisis de Datos Reales (CSV)")
+    st.write("Sube tu archivo para calcular automáticamente la media y desviación.")
+    
+    archivo_subido = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+
+    if archivo_subido is not None:
+        df = pd.read_csv(archivo_subido)
+        st.success("¡Archivo cargado con éxito!")
+        
+        # Mostrar una vista previa
+        with st.expander("Ver tabla de datos"):
+            st.dataframe(df)
+        
+        # Selección de columna
+        columnas_numericas = df.select_dtypes(include=[np.number]).columns.tolist()
+        if columnas_numericas:
+            columna = st.selectbox("Selecciona la columna para analizar", columnas_numericas)
+            
+            # Cálculos automáticos
+            x_barra = df[columna].mean()
+            sigma_s = df[columna].std()
+            n_muestra = len(df[columna])
+            
+            # Mostrar resultados
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Media (x̄)", f"{x_barra:.2f}")
+            col2.metric("Desviación (s)", f"{sigma_s:.2f}")
+            col3.metric("Muestra (n)", n_muestra)
+            
+            st.info(" Ahora puedes usar estos valores en la sección de 'Hipótesis'.")
+        else:
+            st.error("El archivo no contiene columnas numéricas.")
+
+    
